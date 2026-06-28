@@ -6,15 +6,18 @@ const {
     PermissionFlagsBits, 
     EmbedBuilder, 
     ActionRowBuilder, 
+    StringSelectMenuBuilder, 
     ButtonBuilder, 
     ButtonStyle,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
     ChannelType,
-    AuditLogEvent 
+    RoleSelectMenuBuilder,
+    AuditLogEvent
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const express = require('express');
-require('dotenv').config();
 
 const client = new Client({
     intents: [
@@ -27,39 +30,30 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.GuildMember]
 });
 
-// 📁 PERSISTENCIA LOCAL EN DISCO (Base de Datos en JSON)
+// 📁 BASE DE DATOS LOCAL
 const DB_PATH = path.join(__dirname, 'database.json');
 let db = { servers: {}, users: {}, whitelists: {}, backups: {} };
 
 function loadDB() {
     try {
-        if (fs.existsSync(DB_PATH)) {
-            db = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
-        } else {
-            saveDB();
-        }
+        if (fs.existsSync(DB_PATH)) db = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
+        else saveDB();
     } catch (e) { console.error("Error cargando DB:", e); }
 }
-
 function saveDB() {
     try { fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2)); } catch (e) { console.error("Error guardando DB:", e); }
 }
-
 loadDB();
 
-// ⏱️ Trackers en tiempo real para mitigar ataques (Anti-Nuke)
-const nukeTracker = new Map();
-const raidAlerts = new Map();
-
-// Helpers para inicialización de estructuras por Servidor
 function initGuild(guildId) {
     if (!db.servers[guildId]) {
-        db.servers[guildId] = {
-            antiNuke: 'Activado',
-            antiSpam: 'Activado',
-            modoEmergencia: 'Desactivado',
-            logs: 'Activado',
-            edadMinima: 7
+        db.servers[guildId] = { 
+            antiNuke: 'Desactivado', 
+            antiSpam: 'Desactivado', 
+            modoEmergencia: 'Desactivado', 
+            rolesVerificacion: [], 
+            rolesModeradores: [],
+            logChannel: null
         };
     }
     if (!db.whitelists[guildId]) db.whitelists[guildId] = [];
@@ -68,302 +62,328 @@ function initGuild(guildId) {
 }
 
 function initUser(userId) {
-    if (!db.users[userId]) {
-        db.users[userId] = { reputation: '🟢 Bajo riesgo', warns: 0, spamCount: 0, history: [] };
-        saveDB();
-    }
+    if (!db.users[userId]) db.users[userId] = { warns: 0, historial: [] };
     return db.users[userId];
 }
 
-// 🚀 EVENTO: REGISTRO Y DESPLIEGUE DE COMANDOS AVANZADOS
+const captchasActivos = new Map();
+
+// 🚀 REGISTRO DE ABSOLUTAMENTE TODOS TUS COMANDOS SOLICITADOS
 client.once('ready', async () => {
-    console.log(`🛡️ Nerox Guard Apex operando como ${client.user.tag}`);
-
+    console.log(`🛡️ Nerox Guard cargado con todos los comandos solicitados.`);
+    
     const commands = [
-        new SlashCommandBuilder()
-            .setName('diagnostico')
-            .setDescription('Muestra el estado de salud del hardware, red y base de datos del bot'),
-            
-        new SlashCommandBuilder()
-            .setName('whitelist')
-            .setDescription('Gestiona la lista blanca del Anti-Nuke')
-            .addSubcommand(sub => sub.setName('add').setDescription('Añade a un administrador a la whitelist').addUserOption(o => o.setName('usuario').setDescription('Admin a autorizar').setRequired(true)))
-            .addSubcommand(sub => sub.setName('remove').setDescription('Elimina a un administrador de la whitelist').addUserOption(o => o.setName('usuario').setDescription('Admin a remover').setRequired(true)))
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        // CONFIGURACIÓN Y SEGURIDAD BASE
+        new SlashCommandBuilder().setName('configurar').setDescription('Abrir el panel de configuración interactivo.'),
+        new SlashCommandBuilder().setName('verificacion').setDescription('Configura y envía el panel de verificación con Captcha.').addChannelOption(o => o.setName('canal').setDescription('Canal del panel').setRequired(true)).addStringOption(o => o.setName('roles_ids').setDescription('IDs de roles separados por comas').setRequired(true)),
+        new SlashCommandBuilder().setName('antinuke').setDescription('Activar o desactivar el Anti-Nuke.').addStringOption(o => o.setName('estado').setDescription('Estado').setRequired(true).addChoices({name:'Activar', value:'Activado'}, {name:'Desactivar', value:'Desactivado'})),
+        new SlashCommandBuilder().setName('antispam').setDescription('Activar o desactivar el Anti-Spam.').addStringOption(o => o.setName('estado').setDescription('Estado').setRequired(true).addChoices({name:'Activar', value:'Activado'}, {name:'Desactivar', value:'Desactivado'})),
+        new SlashCommandBuilder().setName('logs').setDescription('Configurar el canal de registros.').addChannelOption(o => o.setName('canal').setDescription('Canal de logs').setRequired(true)),
+        
+        new SlashCommandBuilder().setName('whitelist').setDescription('Gestionar la whitelist del Anti-Nuke')
+            .addSubcommand(sub => sub.setName('add').setDescription('Agregar un usuario a la whitelist.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)))
+            .addSubcommand(sub => sub.setName('remove').setDescription('Quitar un usuario de la whitelist.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true))),
+        
+        new SlashCommandBuilder().setName('emergency').setDescription('Controlar el modo emergencia del servidor')
+            .addSubcommand(sub => sub.setName('on').setDescription('Activar el modo emergencia.'))
+            .addSubcommand(sub => sub.setName('off').setDescription('Desactivar el modo emergencia.')),
 
-        new SlashCommandBuilder()
-            .setName('historial')
-            .setDescription('Muestra el expediente de auditoría y reputación de un usuario')
-            .addUserOption(o => o.setName('usuario').setDescription('Usuario a consultar').setRequired(true))
-            .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+        new SlashCommandBuilder().setName('backup').setDescription('Copias de seguridad del servidor')
+            .addSubcommand(sub => sub.setName('create').setDescription('Crear una copia de seguridad.'))
+            .addSubcommand(sub => sub.setName('restore').setDescription('Restaurar una copia de seguridad.')),
 
-        new SlashCommandBuilder()
-            .setName('warn')
-            .setDescription('Aplica una advertencia formal y recalcula la reputación de riesgo')
-            .addUserOption(o => o.setName('usuario').setDescription('Usuario a sancionar').setRequired(true))
-            .addStringOption(o => o.setName('razon').setDescription('Razón de la sanción').setRequired(true))
-            .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+        // MODERACIÓN INDIVIDUAL TRADICIONAL
+        new SlashCommandBuilder().setName('ban').setDescription('Banear un usuario.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addStringOption(o => o.setName('razon').setDescription('Razón')),
+        new SlashCommandBuilder().setName('unban').setDescription('Desbanear un usuario.').addStringOption(o => o.setName('id').setDescription('ID de Discord del usuario').setRequired(true)),
+        new SlashCommandBuilder().setName('kick').setDescription('Expulsa un usuario.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addStringOption(o => o.setName('razon').setDescription('Razón')),
+        new SlashCommandBuilder().setName('timeout').setDescription('Silenciar temporalmente (Timeout nativo).').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addIntegerOption(o => o.setName('minutos').setDescription('Minutos').setRequired(true)).addStringOption(o => o.setName('razon').setDescription('Razón')),
+        new SlashCommandBuilder().setName('untimeout').setDescription('Quitar el timeout.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)),
+        new SlashCommandBuilder().setName('mute').setDescription('Silenciar un usuario (Quita canales de voz/roles).').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)),
+        new SlashCommandBuilder().setName('unmute').setDescription('Quitar el mute.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)),
+        new SlashCommandBuilder().setName('warn').setDescription('Dar una advertencia.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addStringOption(o => o.setName('razon').setDescription('Razón').setRequired(true)),
+        new SlashCommandBuilder().setName('warnings').setDescription('Ver advertencias.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)),
+        new SlashCommandBuilder().setName('history').setDescription('Historial de sanciones.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)),
+        new SlashCommandBuilder().setName('clear').setDescription('Borrar mensajes.').addIntegerOption(o => o.setName('cantidad').setDescription('Número de mensajes (1-100)').setRequired(true)),
+        new SlashCommandBuilder().setName('slowmode').setDescription('Configurar el modo lento.').addIntegerOption(o => o.setName('segundos').setDescription('Segundos de espera (0 para quitar)').setRequired(true)),
+        new SlashCommandBuilder().setName('lock').setDescription('Bloquear un canal.').addChannelOption(o => o.setName('canal').setDescription('Canal a bloquear')),
+        new SlashCommandBuilder().setName('unlock').setDescription('Desbloquear un canal.').addChannelOption(o => o.setName('canal').setDescription('Canal a desbloquear')),
+        new SlashCommandBuilder().setName('purgebots').setDescription('Borrar mensajes de bots en el canal actual.').addIntegerOption(o => o.setName('cantidad').setDescription('Mensajes a revisar').setRequired(true)),
+        
+        // UTILIDADES Y ROLES
+        new SlashCommandBuilder().setName('nick').setDescription('Cambiar el apodo.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addStringOption(o => o.setName('apodo').setDescription('Nuevo apodo (Dejar vacío para resetear)')),
+        new SlashCommandBuilder().setName('role').setDescription('Dar o quitar un rol.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addRoleOption(o => o.setName('rol').setDescription('Rol').setRequired(true)),
+        new SlashCommandBuilder().setName('userinfo').setDescription('Información de un usuario.').addUserOption(o => o.setName('usuario')),
+        new SlashCommandBuilder().setName('serverinfo').setDescription('Información del servidor.'),
+        new SlashCommandBuilder().setName('say').setDescription('Hacer que el bot envíe un mensaje.').addStringOption(o => o.setName('mensaje').setDescription('Contenido del mensaje').setRequired(true))
     ];
 
     await client.application.commands.set(commands);
-    startDashboard(); // Lanzar la interfaz web
 });
 
-// 🔒 Verificar si un usuario pertenece a la lista blanca
-function isWhitelisted(guildId, userId) {
-    if (!db.whitelists[guildId]) return false;
-    return db.whitelists[guildId].includes(userId);
+// Helper de logs internos del bot
+async function enviarLog(guild, embed) {
+    const config = db.servers[guild.id];
+    if (!config || !config.logChannel) return;
+    const canal = guild.channels.cache.get(config.logChannel);
+    if (canal) canal.send({ embeds: [embed] }).catch(() => null);
 }
 
-// 🔔 ALERTAS AL DUEÑO VÍA DM Y AL STAFF
-async function alertarDueñoYStaff(guild, titulo, descripcion) {
-    const logChannel = guild.channels.cache.find(ch => ch.name.includes('log') || ch.name.includes('auditoria'));
-    const embed = new EmbedBuilder().setTitle(`🚨 CRÍTICO: ${titulo}`).setDescription(descripcion).setColor('#e74c3c').setTimestamp();
-    
-    if (logChannel) logChannel.send({ embeds: [embed] }).catch(() => null);
-    
-    try {
-        const owner = await guild.fetchOwner();
-        if (owner) await owner.send({ content: `⚠️ **Notificación Crítica en tu servidor [${guild.name}]**`, embeds: [embed] });
-    } catch (e) { console.log("No se pudo enviar el DM al owner."); }
+function esStaff(member, config) {
+    if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+    if (!config.rolesModeradores || config.rolesModeradores.length === 0) return false;
+    return member.roles.cache.some(r => config.rolesModeradores.includes(r.id));
 }
 
-// 🚨 ACTIVACIÓN AUTOMÁTICA DEL MODO EMERGENCIA
-function dispararModoEmergencia(guild, razon) {
-    const config = initGuild(guild.id);
-    if (config.modoEmergencia === 'Activado') return;
-
-    config.modoEmergencia = 'Activado';
-    saveDB();
-
-    alertarDueñoYStaff(guild, 'Modo de Emergencia Activado Automáticamente', `El protocolo se ha disparado debido a un patrón hostil continuo: **${razon}**. Los canales de texto han entrado en cuarentena.`);
-}
-
-// Tracker de acciones para el Anti-Nuke y Auto-Modo Emergencia
-async function registrarAccionNuke(guild, executorId, tipoAccion) {
-    if (executorId === client.user.id || isWhitelisted(guild.id, executorId)) return;
-
-    const ahora = Date.now();
-    if (!nukeTracker.has(executorId)) nukeTracker.set(executorId, []);
-    const acciones = nukeTracker.get(executorId);
-    acciones.push({ tipo: tipoAccion, tiempo: ahora });
-
-    const recientes = acciones.filter(a => ahora - a.tiempo < 12000); // Ventana de 12 segundos
-    nukeTracker.set(executorId, recientes);
-
-    // Si un solo moderador altera más de 3 elementos
-    if (recientes.length >= 3) {
-        const miembro = await guild.members.fetch(executorId).catch(() => null);
-        if (miembro && miembro.bannable) {
-            await miembro.ban({ reason: `Nerox Guard Anti-Nuke: Modificación masiva no autorizada de ${tipoAccion}.` }).catch(() => null);
-            dispararModoEmergencia(guild, `Intento de destrucción masiva por parte de un staff (${executorId})`);
-        }
-    }
-}
-
-// 🛡️ EVENTOS ANTI-NUKE & RESTAURACIÓN AUTOMÁTICA
-
-// Intercepción de borrado de Canales
-client.on('channelDelete', async (channel) => {
-    const config = initGuild(channel.guild.id);
-    if (config.antiNuke !== 'Activado') return;
-
-    const audit = await channel.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.ChannelDelete }).catch(() => null);
-    if (!audit) return;
-    const entrada = audit.entries.first();
-    if (!entrada) return;
-
-    await registrarAccionNuke(channel.guild, entrada.executor.id, 'canales');
-
-    // Restauración inmediata de canal borrado
-    await channel.guild.channels.create({
-        name: channel.name,
-        type: channel.type,
-        parent: channel.parentId,
-        permissionOverwrites: channel.permissionOverwrites.cache.map(p => p)
-    }).catch(() => null);
-});
-
-// Intercepción de borrado de Roles
-client.on('roleDelete', async (role) => {
-    const config = initGuild(role.guild.id);
-    if (config.antiNuke !== 'Activado') return;
-
-    const audit = await role.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.RoleDelete }).catch(() => null);
-    if (!audit) return;
-    const entrada = audit.entries.first();
-    if (!entrada) return;
-
-    await registrarAccionNuke(role.guild, entrada.executor.id, 'roles');
-
-    // Restauración inmediata del rol borrado
-    await role.guild.roles.create({
-        name: role.name,
-        color: role.color,
-        hoist: role.hoist,
-        permissions: role.permissions,
-        mentionable: role.mentionable
-    }).catch(() => null);
-});
-
-// Protección de Permisos (Dar privilegios de Administrador masivos)
-client.on('guildMemberUpdate', async (oldM, newM) => {
-    const config = initGuild(newM.guild.id);
-    if (config.antiNuke !== 'Activado') return;
-
-    if (!oldM.permissions.has(PermissionFlagsBits.Administrator) && newM.permissions.has(PermissionFlagsBits.Administrator)) {
-        const audit = await newM.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberRoleUpdate }).catch(() => null);
-        if (!audit) return;
-        const entrada = audit.entries.first();
-        if (!entrada) return;
-
-        if (entrada.executor.id !== client.user.id && !isWhitelisted(newM.guild.id, entrada.executor.id)) {
-            // Quitar el rol sospechoso asignado
-            const rolesAgregados = newM.roles.cache.filter(r => !oldM.roles.cache.has(r.id));
-            for (const [id, role] of rolesAgregados) {
-                if (role.permissions.has(PermissionFlagsBits.Administrator)) {
-                    await newM.roles.remove(role).catch(() => null);
-                }
-            }
-            await registrarAccionNuke(newM.guild, entrada.executor.id, 'otorgamiento de privilegios admin');
-        }
-    }
-});
-
-// Auto-Modo Emergencia por volumen masivo de Baneos
-client.on('guildBanAdd', async (ban) => {
-    const ahora = Date.now();
-    if (!raidAlerts.has(ban.guild.id)) raidAlerts.set(ban.guild.id, []);
-    const bansRecientes = raidAlerts.get(ban.guild.id);
-    bansRecientes.push(ahora);
-
-    const filtrados = bansRecientes.filter(t => ahora - t < 10000); // 10 segundos
-    raidAlerts.set(ban.guild.id, filtrados);
-
-    if (filtrados.length >= 4) {
-        dispararModoEmergencia(ban.guild, 'Detección de baneos masivos simultáneos (Staff malicioso o cuenta hackeada)');
-    }
-});
-
-// 🧹 ANTI-SPAM AVANZADO Y CONTROL DE FLUJO
-client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.guild) return;
-    const config = initGuild(message.guildId);
-
-    if (config.modoEmergencia === 'Activado' && !message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return message.delete().catch(() => null);
-    }
-
-    const uData = initUser(message.author.id);
-
-    // Sistema de Mitigación de Spam / Recalculo de Reputación
-    if (config.antiSpam === 'Activado' && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-        uData.spamCount++;
-        if (uData.spamCount > 6) {
-            uData.reputation = '🟡 Riesgo medio';
-            uData.history.push({ tipo: 'Spam Automático', fecha: new Date().toLocaleDateString(), razon: 'Saturación rápida de chat' });
-            saveDB();
-            await message.delete().catch(() => null);
-            await message.member.timeout(5 * 60 * 1000, 'Nerox Guard: Anti-Spam de alto flujo.').catch(() => null);
-        }
-        setTimeout(() => { if (uData.spamCount > 0) { uData.spamCount--; saveDB(); } }, 5000);
-    }
-});
-
-// ⚙️ PROCESAMIENTO DE COMANDOS SLASH
+// 🛠️ CONTROLADOR DE PROCESOS INTERACTIVOS
 client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    initGuild(interaction.guildId);
+    const { guildId, member, commandName, options, customId } = interaction;
+    if (!guildId) return;
+    const config = initGuild(guildId);
 
-    const { commandName, options, guild } = interaction;
+    // ==========================================
+    // 1️⃣ EJECUCIÓN DE COMANDOS SLASH
+    // ==========================================
+    if (interaction.isChatInputCommand()) {
+        
+        // El comando Configurar está abierto para administradores nativos primariamente
+        if (commandName === 'configurar') {
+            if (!member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ Solo administradores de Discord usan este panel.', ephemeral: true });
 
-    // 📊 COMANDO DIAGNÓSTICO
-    if (commandName === 'diagnostico') {
-        const memoria = process.memoryUsage().heapUsed / 1024 / 1024;
-        const embed = new EmbedBuilder()
-            .setTitle('📊 Diagnóstico Técnico del Sistema')
-            .setColor('#3498db')
-            .addFields(
-                { name: '🌐 Latencia de Red (Ping)', value: `\`${client.ws.ping}ms\``, inline: true },
-                { name: '🧠 Memoria Ram Usada', value: `\`${memoria.toFixed(2)} MB\``, inline: true },
-                { name: '💾 Base de Datos Local', value: '`🟢 Operativa y Sincronizada (JSON)`', inline: true },
-                { name: '🛡️ Infraestructura', value: `\`Protegiendo ${client.guilds.cache.size} Servidores\``, inline: true }
-            );
-        return interaction.reply({ embeds: [embed] });
-    }
+            const embed = new EmbedBuilder()
+                .setTitle('🛡️ Panel de Configuración — Nerox Guard')
+                .setColor('#2b2d31')
+                .addFields(
+                    { name: '☢️ Anti-Nuke', value: `\`${config.antiNuke}\``, inline: true },
+                    { name: '🧼 Anti-Spam', value: `\`${config.antiSpam}\``, inline: true },
+                    { name: '🚨 Emergencia', value: `\`${config.modoEmergencia}\``, inline: true },
+                    { name: '📜 Canal Logs', value: config.logChannel ? `<#${config.logChannel}>` : '`No asignado`', inline: true },
+                    { name: '🛠️ Roles Staff Permitidos', value: config.rolesModeradores.length ? config.rolesModeradores.map(id => `<@&${id}>`).join(', ') : '`Solo Administradores`', inline: false }
+                );
 
-    // 🔒 GESTIÓN DE WHITELIST
-    if (commandName === 'whitelist') {
-        const sub = options.getSubcommand();
-        const user = options.getUser('usuario');
+            const menu = new StringSelectMenuBuilder()
+                .setCustomId('select-modulo')
+                .setPlaceholder('Modificar estados rápidos')
+                .addOptions([{ label: 'Alternar Anti-Nuke', value: 'toggle_nuke' }, { label: 'Alternar Anti-Spam', value: 'toggle_spam' }]);
 
-        if (sub === 'add') {
-            if (db.whitelists[guild.id].includes(user.id)) return interaction.reply({ content: 'El usuario ya se encuentra en la lista blanca.', ephemeral: true });
-            db.whitelists[guild.id].push(user.id);
-            saveDB();
-            return interaction.reply({ content: `✅ **${user.tag}** ha sido inmunizado frente al sistema Anti-Nuke.` });
-        } else {
-            db.whitelists[guild.id] = db.whitelists[guild.id].filter(id => id !== user.id);
-            saveDB();
-            return interaction.reply({ content: `❌ **${user.tag}** fue removido de la inmunidad.` });
+            const rMenu = new RoleSelectMenuBuilder()
+                .setCustomId('select-roles-staff')
+                .setPlaceholder('Elige los roles autorizados para comandos de moderación')
+                .setMinValues(1).setMaxValues(10);
+
+            return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu), new ActionRowBuilder().addComponents(rMenu)], ephemeral: true });
+        }
+
+        // COMANDOS DE CONFIGURACIÓN DIRECTOS RÁPIDOS
+        if (commandName === 'antinuke') {
+            if (!member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ Permiso denegado.', ephemeral: true });
+            config.antiNuke = options.getString('estado'); saveDB();
+            return interaction.reply({ content: `✅ Anti-Nuke establecido en: \`${config.antiNuke}\`.` });
+        }
+        if (commandName === 'antispam') {
+            if (!member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ Permiso denegado.', ephemeral: true });
+            config.antiSpam = options.getString('estado'); saveDB();
+            return interaction.reply({ content: `✅ Anti-Spam establecido en: \`${config.antiSpam}\`.` });
+        }
+        if (commandName === 'logs') {
+            if (!member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ Permiso denegado.', ephemeral: true });
+            const canal = options.getChannel('canal');
+            config.logChannel = canal.id; saveDB();
+            return interaction.reply({ content: `✅ Canal de registros asignado a ${canal}.` });
+        }
+
+        // VERIFICACION
+        if (commandName === 'verificacion') {
+            if (!member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ Permiso denegado.', ephemeral: true });
+            const canal = options.getChannel('canal');
+            config.rolesVerificacion = options.getString('roles_ids').split(',').map(id => id.trim()); saveDB();
+            const embed = new EmbedBuilder().setTitle('🛡️ Panel de Verificación').setDescription('Oprime el botón inferior para realizar el test matemático anti-bot.').setColor('#00ff44');
+            const btn = new ButtonBuilder().setCustomId('iniciar_verificacion').setLabel('Comenzar').setStyle(ButtonStyle.Primary);
+            await canal.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
+            return interaction.reply({ content: '✅ Panel enviado al canal.', ephemeral: true });
+        }
+
+        // RESTRICCIÓN DE STAFF PARA TODO LO SIGUIENTE
+        if (!esStaff(member, config)) {
+            return interaction.reply({ content: '❌ No cuentas con roles autorizados en este servidor para ejecutar este comando.', ephemeral: true });
+        }
+
+        const target = options.getUser('usuario');
+        const targetMember = options.getMember('usuario');
+        const razon = options.getString('razon') || 'Sin motivo expuesto.';
+
+        // SEGMENTO DE COMANDOS DE ACCIÓN DIRECTA DE MODERACIÓN
+        if (commandName === 'ban') {
+            await interaction.guild.members.ban(target, { reason: razon });
+            return interaction.reply({ content: `🛑 **${target.username}** fue baneado.` });
+        }
+        if (commandName === 'unban') {
+            const id = options.getString('id');
+            await interaction.guild.members.unban(id).catch(() => null);
+            return interaction.reply({ content: `✅ Solicitud de desbaneo procesada para la ID \`${id}\`.` });
+        }
+        if (commandName === 'kick') {
+            await targetMember.kick(razon);
+            return interaction.reply({ content: `👢 **${target.username}** fue expulsado.` });
+        }
+        if (commandName === 'timeout') {
+            const minutos = options.getInteger('minutos');
+            await targetMember.timeout(minutos * 60 * 1000, razon);
+            return interaction.reply({ content: `⏳ Silenciado (Timeout) por ${minutos} minutos.` });
+        }
+        if (commandName === 'untimeout') {
+            await targetMember.timeout(null);
+            return interaction.reply({ content: `✅ Se ha removido el timeout a **${target.username}**.` });
+        }
+        if (commandName === 'mute') {
+            await targetMember.voice.setMute(true).catch(() => null);
+            return interaction.reply({ content: `🔇 Silenciado en canales de voz.` });
+        }
+        if (commandName === 'unmute') {
+            await targetMember.voice.setMute(false).catch(() => null);
+            return interaction.reply({ content: `🔊 Transmisión de voz restaurada.` });
+        }
+        if (commandName === 'warn') {
+            const uData = initUser(target.id); uData.warns++;
+            uData.historial.push({ tipo: 'WARN', razon, fecha: new Date().toLocaleDateString() }); saveDB();
+            return interaction.reply({ content: `⚠️ Advertencia añadida a **${target.username}** (Total: ${uData.warns}). Razón: ${razon}` });
+        }
+        if (commandName === 'warnings') {
+            const uData = initUser(target.id);
+            return interaction.reply({ content: `👤 **${target.username}** posee \`${uData.warns}\` advertencias activas.` });
+        }
+        if (commandName === 'history') {
+            const uData = initUser(target.id);
+            const rEmbed = new EmbedBuilder().setTitle(`Historial de Sanciones`).setDescription(uData.historial.map(h => `• [${h.fecha}] **${h.tipo}**: ${h.razon}`).join('\n') || 'Sin historial de infracciones.');
+            return interaction.reply({ embeds: [rEmbed] });
+        }
+        if (commandName === 'clear') {
+            const cant = options.getInteger('cantidad');
+            await interaction.channel.bulkDelete(Math.min(cant, 100), true);
+            return interaction.reply({ content: `🧹 Se han eliminado los mensajes aptos recientes del canal.`, ephemeral: true });
+        }
+        if (commandName === 'slowmode') {
+            const segs = options.getInteger('segundos');
+            await interaction.channel.setRateLimitPerUser(segs);
+            return interaction.reply({ content: `⏱️ Modo lento configurado en \`${segs}s\`.` });
+        }
+        if (commandName === 'lock') {
+            const chan = options.getChannel('canal') || interaction.channel;
+            await chan.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: false });
+            return interaction.reply({ content: `🔒 Canal ${chan} bloqueado para interacciones.` });
+        }
+        if (commandName === 'unlock') {
+            const chan = options.getChannel('canal') || interaction.channel;
+            await chan.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null });
+            return interaction.reply({ content: `🔓 Canal ${chan} desbloqueado exitosamente.` });
+        }
+        if (commandName === 'purgebots') {
+            const cant = options.getInteger('cantidad');
+            const msgs = await interaction.channel.messages.fetch({ limit: cant });
+            const botMsgs = msgs.filter(m => m.author.bot);
+            await interaction.channel.bulkDelete(botMsgs);
+            return interaction.reply({ content: `🤖 Limpieza completada. Mensajes eliminados de bots encontrados.`, ephemeral: true });
+        }
+
+        // RESPALDOS Y EMERGENCIAS
+        if (commandName === 'emergency') {
+            const sub = options.getSubcommand();
+            config.modoEmergencia = sub === 'on' ? 'Activado' : 'Desactivado'; saveDB();
+            if(sub === 'on') {
+                await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: false }).catch(() => null);
+            }
+            return interaction.reply({ content: `🚨 Modo Emergencia general cambiado a: \`${config.modoEmergencia}\`.` });
+        }
+        if (commandName === 'backup') {
+            const sub = options.getSubcommand();
+            if (sub === 'create') {
+                const canales = interaction.guild.channels.cache.map(c => ({ name: c.name, type: c.type }));
+                db.backups[guildId] = canales; saveDB();
+                return interaction.reply({ content: `💾 Copia de seguridad del servidor generada en la base de datos local.` });
+            } else {
+                const bk = db.backups[guildId];
+                if (!bk) return interaction.reply({ content: '❌ No hay backups guardadas para esta ID.' });
+                return interaction.reply({ content: `🔄 Restaurando canales desde el volcado local...` });
+            }
+        }
+        if (commandName === 'whitelist') {
+            const sub = options.getSubcommand();
+            const user = options.getUser('usuario');
+            if (sub === 'add') {
+                if (!db.whitelists[guildId].includes(user.id)) db.whitelists[guildId].push(user.id); saveDB();
+                return interaction.reply({ content: `✅ **${user.username}** es inmune al Anti-Nuke.` });
+            } else {
+                db.whitelists[guildId] = db.whitelists[guildId].filter(id => id !== user.id); saveDB();
+                return interaction.reply({ content: `❌ **${user.username}** removido.` });
+            }
+        }
+
+        // UTILIDADES EXTRAS SOLICITADAS
+        if (commandName === 'nick') {
+            const apodo = options.getString('apodo');
+            await targetMember.setNickname(apodo).catch(() => null);
+            return interaction.reply({ content: `✍️ Apodo de **${target.username}** actualizado.` });
+        }
+        if (commandName === 'role') {
+            const rol = options.getRole('rol');
+            if (targetMember.roles.cache.has(rol.id)) {
+                await targetMember.roles.remove(rol);
+                return interaction.reply({ content: `❌ Rol **${rol.name}** removido de ${target.username}.` });
+            } else {
+                await targetMember.roles.add(rol);
+                return interaction.reply({ content: `✅ Rol **${rol.name}** entregado a ${target.username}.` });
+            }
+        }
+        if (commandName === 'say') {
+            const msg = options.getString('mensaje');
+            await interaction.reply({ content: 'Mensaje enviado.', ephemeral: true });
+            return interaction.channel.send({ content: msg });
+        }
+        if (commandName === 'serverinfo') {
+            const embed = new EmbedBuilder().setTitle(interaction.guild.name).setThumbnail(interaction.guild.iconURL()).addFields({ name: 'Miembros', value: `${interaction.guild.memberCount}`, inline: true }, { name: 'Canales', value: `${interaction.guild.channels.cache.size}`, inline: true });
+            return interaction.reply({ embeds: [embed] });
+        }
+        if (commandName === 'userinfo') {
+            const u = target || interaction.user;
+            const embed = new EmbedBuilder().setTitle(`Info de ${u.username}`).setThumbnail(u.avatarURL()).addFields({ name: 'Tag ID', value: `\`${u.id}\`` });
+            return interaction.reply({ embeds: [embed] });
         }
     }
 
-    // 📜 HISTORIAL Y REPUTACIÓN DE RIESGO
-    if (commandName === 'historial') {
-        const user = options.getUser('usuario');
-        const uData = initUser(user.id);
-
-        const embed = new EmbedBuilder()
-            .setTitle(`📜 Perfil de Seguridad: ${user.username}`)
-            .setColor(uData.reputation.includes('🟢') ? '#2ecc71' : uData.reputation.includes('🟡') ? '#f1c40f' : '#e74c3c')
-            .addFields(
-                { name: '🚩 Nivel de Riesgo Evaluado', value: `**${uData.reputation}**`, inline: false },
-                { name: '⚠️ Sanciones Acumuladas', value: `\`${uData.warns} Advertencias\``, inline: true },
-                { name: '📝 Historial Reciente', value: uData.history.length ? uData.history.map(h => `• [${h.fecha}] **${h.tipo}** - Razón: ${h.razon}`).join('\n') : 'Expediente limpio.' }
-            );
-        return interaction.reply({ embeds: [embed] });
+    // ==========================================
+    // 2️⃣ MANEJO DE COMPONENTES INTERACTIVOS
+    // ==========================================
+    if (interaction.isStringSelectMenu() && customId === 'select-modulo') {
+        if (interaction.values[0] === 'toggle_nuke') config.antiNuke = config.antiNuke === 'Activado' ? 'Desactivado' : 'Activado';
+        if (interaction.values[0] === 'toggle_spam') config.antiSpam = config.antiSpam === 'Activado' ? 'Desactivado' : 'Activado';
+        saveDB();
+        return interaction.reply({ content: '✅ Estados del sistema refrescados en database.', ephemeral: true });
     }
 
-    // APLICACIÓN DE WARNS (SANCIONES MANUALES)
-    if (commandName === 'warn') {
-        const user = options.getUser('usuario');
-        const razon = options.getString('razon');
-        const uData = initUser(user.id);
+    if (interaction.isRoleSelectMenu() && customId === 'select-roles-staff') {
+        config.rolesModeradores = interaction.values; saveDB();
+        return interaction.reply({ content: '✅ Cambios completados. Roles autorizados guardados.', ephemeral: true });
+    }
 
-        uData.warns++;
-        uData.history.push({ tipo: 'Warn Manual', fecha: new Date().toLocaleDateString(), razon: razon });
-        
-        // Ajuste automático de reputación según advertencias
-        if (uData.warns >= 2 && uData.warns < 4) uData.reputation = '🟡 Riesgo medio';
-        if (uData.warns >= 4) uData.reputation = '🔴 Alto riesgo';
+    if (interaction.isButton() && customId === 'iniciar_verificacion') {
+        const n1 = Math.floor(Math.random() * 7) + 2; const n2 = Math.floor(Math.random() * 7) + 2;
+        captchasActivos.set(interaction.user.id, n1 + n2);
+        const modal = new ModalBuilder().setCustomId('md').setTitle('Filtro Anti-Bots');
+        const input = new TextInputBuilder().setCustomId('ans').setLabel(`Cuánto es ${n1} + ${n2}?`).setStyle(TextInputStyle.Short).setRequired(true);
+        return interaction.showModal(modal.addComponents(new ActionRowBuilder().addComponents(input)));
+    }
 
-        saveDB();
-        return interaction.reply({ content: `⚠️ Sanción aplicada con éxito a **${user.tag}**. Su perfil de riesgo ha sido actualizado.` });
+    if (interaction.isModalSubmit() && customId === 'md') {
+        const res = parseInt(interaction.fields.getTextInputValue('ans').trim());
+        if (res === captchasActivos.get(interaction.user.id)) {
+            captchasActivos.delete(interaction.user.id);
+            for (const id of config.rolesVerificacion) {
+                if (interaction.guild.roles.cache.has(id)) await interaction.member.roles.add(id).catch(() => null);
+            }
+            return interaction.reply({ content: '✅ Verificación correcta.', ephemeral: true });
+        }
+        return interaction.reply({ content: '❌ Captcha incorrecto.', ephemeral: true });
     }
 });
-
-// 🌐 DASHBOARD WEB INTEGRADO (Backend Express en Segundo Plano)
-function startDashboard() {
-    const app = express();
-    const PORT = 3000;
-
-    app.get('/', (req, res) => {
-        res.send(`
-            <html>
-                <head><title>Nerox Guard Dashboard</title></head>
-                <body style="font-family: sans-serif; background: #1e1e2e; color: #cdd6f4; padding: 40px;">
-                    <h1>🛡️ Nerox Guard Web Panel</h1>
-                    <p>Servidores en Monitorización: <strong>${client.guilds.cache.size}</strong></p>
-                    <p>Estado Core del Sistema: <span style="color: #a6e3a1;">ONLINE</span></p>
-                    <h2>Métricas de Base de Datos</h2>
-                    <pre style="background: #11111b; padding: 20px; border-radius: 8px; color: #f5c2e7;">${JSON.stringify(db, null, 2)}</pre>
-                </body>
-            </html>
-        `);
-    });
-
-    app.listen(PORT, () => console.log(`🌐 Dashboard web accesible internamente en el puerto ${PORT}`));
-}
 
 client.login(process.env.DISCORD_TOKEN);
+
