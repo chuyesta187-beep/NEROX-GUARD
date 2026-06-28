@@ -68,65 +68,359 @@ function initUser(userId) {
 
 const captchasActivos = new Map();
 
-// 🚀 REGISTRO DE ABSOLUTAMENTE TODOS TUS COMANDOS SOLICITADOS
+// 🚀 REGISTRO DE COMANDOS CON CONSTRUCCIÓN FORMAL DE OPCIONES Y DESCRIPCIONES COMPLETAS
 client.once('ready', async () => {
-    console.log(`🛡️ Nerox Guard cargado con todos los comandos solicitados.`);
+    console.log(`🛡️ Nerox Guard cargado con descripciones en cada opción.`);
     
     const commands = [
         // CONFIGURACIÓN Y SEGURIDAD BASE
-        new SlashCommandBuilder().setName('configurar').setDescription('Abrir el panel de configuración interactivo.'),
-        new SlashCommandBuilder().setName('verificacion').setDescription('Configura y envía el panel de verificación con Captcha.').addChannelOption(o => o.setName('canal').setDescription('Canal del panel').setRequired(true)).addStringOption(o => o.setName('roles_ids').setDescription('IDs de roles separados por comas').setRequired(true)),
-        new SlashCommandBuilder().setName('antinuke').setDescription('Activar o desactivar el Anti-Nuke.').addStringOption(o => o.setName('estado').setDescription('Estado').setRequired(true).addChoices({name:'Activar', value:'Activado'}, {name:'Desactivar', value:'Desactivado'})),
-        new SlashCommandBuilder().setName('antispam').setDescription('Activar o desactivar el Anti-Spam.').addStringOption(o => o.setName('estado').setDescription('Estado').setRequired(true).addChoices({name:'Activar', value:'Activado'}, {name:'Desactivar', value:'Desactivado'})),
-        new SlashCommandBuilder().setName('logs').setDescription('Configurar el canal de registros.').addChannelOption(o => o.setName('canal').setDescription('Canal de logs').setRequired(true)),
+        new SlashCommandBuilder()
+            .setName('configurar')
+            .setDescription('Abre el panel de configuración interactivo para gestionar módulos y roles de Staff.'),
+            
+        new SlashCommandBuilder()
+            .setName('verificacion')
+            .setDescription('Configura y envía el panel con botón de verificación y Captcha matemático.')
+            .addChannelOption(option => 
+                option
+                    .setName('canal')
+                    .setDescription('El canal de texto donde se mandará el panel de verificación.')
+                    .setRequired(true)
+            )
+            .addStringOption(option => 
+                option
+                    .setName('roles_ids')
+                    .setDescription('IDs de los roles que se darán al verificarse (separados por comas).')
+                    .setRequired(true)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('antinuke')
+            .setDescription('Activa o desactiva de forma rápida el sistema de protección Anti-Nuke.')
+            .addStringOption(option => 
+                option
+                    .setName('estado')
+                    .setDescription('Selecciona si deseas prender o apagar la protección.')
+                    .setRequired(true)
+                    .addChoices({name:'Activar', value:'Activado'}, {name:'Desactivar', value:'Desactivado'})
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('antispam')
+            .setDescription('Activa o desactiva de forma rápida el filtro global Anti-Spam.')
+            .addStringOption(option => 
+                option
+                    .setName('estado')
+                    .setDescription('Selecciona si deseas prender o apagar el filtro de spam.')
+                    .setRequired(true)
+                    .addChoices({name:'Activar', value:'Activado'}, {name:'Desactivar', value:'Desactivado'})
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('logs')
+            .setDescription('Configura el canal donde el bot enviará el historial de acciones y seguridad.')
+            .addChannelOption(option => 
+                option
+                    .setName('canal')
+                    .setDescription('Canal de texto destinado para los registros del bot.')
+                    .setRequired(true)
+            ),
         
-        new SlashCommandBuilder().setName('whitelist').setDescription('Gestionar la whitelist del Anti-Nuke')
-            .addSubcommand(sub => sub.setName('add').setDescription('Agregar un usuario a la whitelist.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)))
-            .addSubcommand(sub => sub.setName('remove').setDescription('Quitar un usuario de la whitelist.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true))),
+        new SlashCommandBuilder()
+            .setName('whitelist')
+            .setDescription('Gestiona la lista blanca de usuarios inmunes al sistema Anti-Nuke.')
+            .addSubcommand(subcmd => 
+                subcmd
+                    .setName('add')
+                    .setDescription('Agrega un usuario de extrema confianza a la whitelist.')
+                    .addUserOption(option => 
+                        option
+                            .setName('usuario')
+                            .setDescription('El usuario que recibirá la inmunidad total del Anti-Nuke.')
+                            .setRequired(true)
+                    )
+            )
+            .addSubcommand(subcmd => 
+                subcmd
+                    .setName('remove')
+                    .setDescription('Quita a un usuario de la whitelist de seguridad.')
+                    .addUserOption(option => 
+                        option
+                            .setName('usuario')
+                            .setDescription('El usuario al que se le removerá la inmunidad.')
+                            .setRequired(true)
+                    )
+            ),
         
-        new SlashCommandBuilder().setName('emergency').setDescription('Controlar el modo emergencia del servidor')
-            .addSubcommand(sub => sub.setName('on').setDescription('Activar el modo emergencia.'))
-            .addSubcommand(sub => sub.setName('off').setDescription('Desactivar el modo emergencia.')),
+        new SlashCommandBuilder()
+            .setName('emergency')
+            .setDescription('Controla el estado de confinamiento o emergencia del servidor.')
+            .addSubcommand(subcmd => 
+                subcmd
+                    .setName('on')
+                    .setDescription('Bloquea la escritura global para proteger el servidor de un ataque masivo.')
+            )
+            .addSubcommand(subcmd => 
+                subcmd
+                    .setName('off')
+                    .setDescription('Desactiva el modo emergencia y devuelve los permisos normales de chat.')
+            ),
 
-        new SlashCommandBuilder().setName('backup').setDescription('Copias de seguridad del servidor')
-            .addSubcommand(sub => sub.setName('create').setDescription('Crear una copia de seguridad.'))
-            .addSubcommand(sub => sub.setName('restore').setDescription('Restaurar una copia de seguridad.')),
+        new SlashCommandBuilder()
+            .setName('backup')
+            .setDescription('Administra copias de seguridad de la estructura de canales del servidor.')
+            .addSubcommand(subcmd => 
+                subcmd
+                    .setName('create')
+                    .setDescription('Crea un respaldo actual del orden y nombres de tus canales.')
+            )
+            .addSubcommand(subcmd => 
+                subcmd
+                    .setName('restore')
+                    .setDescription('Restaura la estructura guardada en tu último backup.')
+            ),
 
         // MODERACIÓN INDIVIDUAL TRADICIONAL
-        new SlashCommandBuilder().setName('ban').setDescription('Banear un usuario.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addStringOption(o => o.setName('razon').setDescription('Razón')),
-        new SlashCommandBuilder().setName('unban').setDescription('Desbanear un usuario.').addStringOption(o => o.setName('id').setDescription('ID de Discord del usuario').setRequired(true)),
-        new SlashCommandBuilder().setName('kick').setDescription('Expulsa un usuario.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addStringOption(o => o.setName('razon').setDescription('Razón')),
-        new SlashCommandBuilder().setName('timeout').setDescription('Silenciar temporalmente (Timeout nativo).').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addIntegerOption(o => o.setName('minutos').setDescription('Minutos').setRequired(true)).addStringOption(o => o.setName('razon').setDescription('Razón')),
-        new SlashCommandBuilder().setName('untimeout').setDescription('Quitar el timeout.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)),
-        new SlashCommandBuilder().setName('mute').setDescription('Silenciar un usuario (Quita canales de voz/roles).').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)),
-        new SlashCommandBuilder().setName('unmute').setDescription('Quitar el mute.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)),
-        new SlashCommandBuilder().setName('warn').setDescription('Dar una advertencia.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addStringOption(o => o.setName('razon').setDescription('Razón').setRequired(true)),
-        new SlashCommandBuilder().setName('warnings').setDescription('Ver advertencias.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)),
-        new SlashCommandBuilder().setName('history').setDescription('Historial de sanciones.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)),
-        new SlashCommandBuilder().setName('clear').setDescription('Borrar mensajes.').addIntegerOption(o => o.setName('cantidad').setDescription('Número de mensajes (1-100)').setRequired(true)),
-        new SlashCommandBuilder().setName('slowmode').setDescription('Configurar el modo lento.').addIntegerOption(o => o.setName('segundos').setDescription('Segundos de espera (0 para quitar)').setRequired(true)),
-        new SlashCommandBuilder().setName('lock').setDescription('Bloquear un canal.').addChannelOption(o => o.setName('canal').setDescription('Canal a bloquear')),
-        new SlashCommandBuilder().setName('unlock').setDescription('Desbloquear un canal.').addChannelOption(o => o.setName('canal').setDescription('Canal a desbloquear')),
-        new SlashCommandBuilder().setName('purgebots').setDescription('Borrar mensajes de bots en el canal actual.').addIntegerOption(o => o.setName('cantidad').setDescription('Mensajes a revisar').setRequired(true)),
+        new SlashCommandBuilder()
+            .setName('ban')
+            .setDescription('Banea permanentemente a un usuario infractor del servidor.')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El miembro que deseas banear del servidor.')
+                    .setRequired(true)
+            )
+            .addStringOption(option => 
+                option
+                    .setName('razon')
+                    .setDescription('El motivo o justificación de este baneo.')
+                    .setRequired(false)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('unban')
+            .setDescription('Remueve el baneo de un usuario utilizando su ID de Discord.')
+            .addStringOption(option => 
+                option
+                    .setName('id')
+                    .setDescription('La ID numérica de Discord del usuario desbaneado.')
+                    .setRequired(true)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('kick')
+            .setDescription('Expulsa a un miembro del servidor (podrá volver a entrar si tiene invitación).')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El miembro que deseas expulsar.')
+                    .setRequired(true)
+            )
+            .addStringOption(option => 
+                option
+                    .setName('razon')
+                    .setDescription('El motivo de la expulsión.')
+                    .setRequired(false)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('timeout')
+            .setDescription('Silencia de forma temporal a un usuario con el aislamiento nativo de Discord.')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El miembro al que se le aplicará el aislamiento.')
+                    .setRequired(true)
+            )
+            .addIntegerOption(option => 
+                option
+                    .setName('minutos')
+                    .setDescription('Cantidad de minutos que durará el silencio.')
+                    .setRequired(true)
+            )
+            .addStringOption(option => 
+                option
+                    .setName('razon')
+                    .setDescription('El motivo del aislamiento temporal.')
+                    .setRequired(false)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('untimeout')
+            .setDescription('Le quita el aislamiento (timeout) a un usuario antes de tiempo.')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El miembro al que le devolverás la palabra.')
+                    .setRequired(true)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('mute')
+            .setDescription('Silencia por completo a un usuario en todos los canales de voz.')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El miembro que deseas silenciar en los canales de voz.')
+                    .setRequired(true)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('unmute')
+            .setDescription('Le permite hablar de nuevo en canales de voz a un usuario silenciado.')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El miembro que podrá volver a hablar en los canales de voz.')
+                    .setRequired(true)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('warn')
+            .setDescription('Coloca una advertencia formal en el historial de un usuario.')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El miembro que recibirá la advertencia.')
+                    .setRequired(true)
+            )
+            .addStringOption(option => 
+                option
+                    .setName('razon')
+                    .setDescription('El motivo detallado de este aviso.')
+                    .setRequired(true)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('warnings')
+            .setDescription('Muestra el contador total de advertencias que acumula un usuario.')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El miembro del cual deseas consultar las advertencias totales.')
+                    .setRequired(true)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('history')
+            .setDescription('Muestra la lista cronológica detallada de todas las sanciones de un usuario.')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El miembro cuyo expediente de sanciones deseas revisar.')
+                    .setRequired(true)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('clear')
+            .setDescription('Borra una cantidad específica de mensajes recientes en el canal actual.')
+            .addIntegerOption(option => 
+                option
+                    .setName('cantidad')
+                    .setDescription('Número de mensajes a eliminar (Máximo 100).')
+                    .setRequired(true)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('slowmode')
+            .setDescription('Establece un tiempo de espera obligatorio entre mensajes para este canal.')
+            .addIntegerOption(option => 
+                option
+                    .setName('segundos')
+                    .setDescription('Segundos que deben esperar los usuarios (Pon 0 para desactivarlo).')
+                    .setRequired(true)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('lock')
+            .setDescription('Cierra los permisos de envío de mensajes en un canal específico.')
+            .addChannelOption(option => 
+                option
+                    .setName('canal')
+                    .setDescription('El canal de texto que deseas cerrar (Por defecto el actual).')
+                    .setRequired(false)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('unlock')
+            .setDescription('Abre los permisos de envío de mensajes en un canal previamente bloqueado.')
+            .addChannelOption(option => 
+                option
+                    .setName('canal')
+                    .setDescription('El canal de texto que deseas reabrir (Por defecto el actual).')
+                    .setRequired(false)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('purgebots')
+            .setDescription('Busca y elimina únicamente los mensajes enviados por bots en el canal actual.')
+            .addIntegerOption(option => 
+                option
+                    .setName('cantidad')
+                    .setDescription('Cuántos mensajes hacia atrás revisará el bot para hacer la limpieza.')
+                    .setRequired(true)
+            ),
         
         // UTILIDADES Y ROLES
-        new SlashCommandBuilder().setName('nick').setDescription('Cambiar el apodo.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addStringOption(o => o.setName('apodo').setDescription('Nuevo apodo (Dejar vacío para resetear)')),
-        new SlashCommandBuilder().setName('role').setDescription('Dar o quitar un rol.').addUserOption(o => o.setName('usuario').setDescription('Usuario').setRequired(true)).addRoleOption(o => o.setName('rol').setDescription('Rol').setRequired(true)),
-        new SlashCommandBuilder().setName('userinfo').setDescription('Información de un usuario.').addUserOption(o => o.setName('usuario')),
-        new SlashCommandBuilder().setName('serverinfo').setDescription('Información del servidor.'),
-        new SlashCommandBuilder().setName('say').setDescription('Hacer que el bot envíe un mensaje.').addStringOption(o => o.setName('mensaje').setDescription('Contenido del mensaje').setRequired(true))
+        new SlashCommandBuilder()
+            .setName('nick')
+            .setDescription('Cambia o restablece el apodo de un miembro dentro del servidor.')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El miembro al que le cambiarás el apodo.')
+                    .setRequired(true)
+            )
+            .addStringOption(option => 
+                option
+                    .setName('apodo')
+                    .setDescription('El nuevo nombre (Déjalo en blanco para remover el apodo actual).')
+                    .setRequired(false)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('role')
+            .setDescription('Asigna un rol a un usuario o se lo remueve si ya lo tiene.')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El miembro al que se le gestionará el rol.')
+                    .setRequired(true)
+            )
+            .addRoleOption(option => 
+                option
+                    .setName('rol')
+                    .setDescription('El rol que deseas entregar o quitar.')
+                    .setRequired(true)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('userinfo')
+            .setDescription('Muestra los datos públicos, IDs y fechas de creación de la cuenta de un usuario.')
+            .addUserOption(option => 
+                option
+                    .setName('usuario')
+                    .setDescription('El usuario que deseas investigar.')
+                    .setRequired(false)
+            ),
+            
+        new SlashCommandBuilder()
+            .setName('serverinfo')
+            .setDescription('Muestra estadísticas detalladas del servidor (Miembros, canales, iconos, etc.).'),
+            
+        new SlashCommandBuilder()
+            .setName('say')
+            .setDescription('Hace que el bot envíe un mensaje personalizado en el canal actual.')
+            .addStringOption(option => 
+                option
+                    .setName('mensaje')
+                    .setDescription('El texto que quieres que el bot envíe en el chat.')
+                    .setRequired(true)
+            )
     ];
 
     await client.application.commands.set(commands);
 });
-
-// Helper de logs internos del bot
-async function enviarLog(guild, embed) {
-    const config = db.servers[guild.id];
-    if (!config || !config.logChannel) return;
-    const canal = guild.channels.cache.get(config.logChannel);
-    if (canal) canal.send({ embeds: [embed] }).catch(() => null);
-}
 
 function esStaff(member, config) {
     if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
@@ -140,12 +434,8 @@ client.on('interactionCreate', async (interaction) => {
     if (!guildId) return;
     const config = initGuild(guildId);
 
-    // ==========================================
-    // 1️⃣ EJECUCIÓN DE COMANDOS SLASH
-    // ==========================================
     if (interaction.isChatInputCommand()) {
         
-        // El comando Configurar está abierto para administradores nativos primariamente
         if (commandName === 'configurar') {
             if (!member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ Solo administradores de Discord usan este panel.', ephemeral: true });
 
@@ -173,7 +463,6 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(menu), new ActionRowBuilder().addComponents(rMenu)], ephemeral: true });
         }
 
-        // COMANDOS DE CONFIGURACIÓN DIRECTOS RÁPIDOS
         if (commandName === 'antinuke') {
             if (!member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ Permiso denegado.', ephemeral: true });
             config.antiNuke = options.getString('estado'); saveDB();
@@ -191,7 +480,6 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ content: `✅ Canal de registros asignado a ${canal}.` });
         }
 
-        // VERIFICACION
         if (commandName === 'verificacion') {
             if (!member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ Permiso denegado.', ephemeral: true });
             const canal = options.getChannel('canal');
@@ -202,7 +490,7 @@ client.on('interactionCreate', async (interaction) => {
             return interaction.reply({ content: '✅ Panel enviado al canal.', ephemeral: true });
         }
 
-        // RESTRICCIÓN DE STAFF PARA TODO LO SIGUIENTE
+        // CONTROL DE ACCESO STAFF
         if (!esStaff(member, config)) {
             return interaction.reply({ content: '❌ No cuentas con roles autorizados en este servidor para ejecutar este comando.', ephemeral: true });
         }
@@ -211,10 +499,9 @@ client.on('interactionCreate', async (interaction) => {
         const targetMember = options.getMember('usuario');
         const razon = options.getString('razon') || 'Sin motivo expuesto.';
 
-        // SEGMENTO DE COMANDOS DE ACCIÓN DIRECTA DE MODERACIÓN
         if (commandName === 'ban') {
             await interaction.guild.members.ban(target, { reason: razon });
-            return interaction.reply({ content: `🛑 **${target.username}** fue baneado.` });
+            return interaction.reply({ content: `🛑 **${target.username}** fue baneado correctamente.` });
         }
         if (commandName === 'unban') {
             const id = options.getString('id');
@@ -223,12 +510,12 @@ client.on('interactionCreate', async (interaction) => {
         }
         if (commandName === 'kick') {
             await targetMember.kick(razon);
-            return interaction.reply({ content: `👢 **${target.username}** fue expulsado.` });
+            return interaction.reply({ content: `👢 **${target.username}** fue expulsado del servidor.` });
         }
         if (commandName === 'timeout') {
             const minutos = options.getInteger('minutos');
             await targetMember.timeout(minutos * 60 * 1000, razon);
-            return interaction.reply({ content: `⏳ Silenciado (Timeout) por ${minutos} minutos.` });
+            return interaction.reply({ content: `⏳ **${target.username}** fue silenciado por ${minutos} minutos.` });
         }
         if (commandName === 'untimeout') {
             await targetMember.timeout(null);
@@ -259,7 +546,7 @@ client.on('interactionCreate', async (interaction) => {
         if (commandName === 'clear') {
             const cant = options.getInteger('cantidad');
             await interaction.channel.bulkDelete(Math.min(cant, 100), true);
-            return interaction.reply({ content: `🧹 Se han eliminado los mensajes aptos recientes del canal.`, ephemeral: true });
+            return interaction.reply({ content: `🧹 Se han eliminado los mensajes del canal.`, ephemeral: true });
         }
         if (commandName === 'slowmode') {
             const segs = options.getInteger('segundos');
@@ -269,39 +556,38 @@ client.on('interactionCreate', async (interaction) => {
         if (commandName === 'lock') {
             const chan = options.getChannel('canal') || interaction.channel;
             await chan.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: false });
-            return interaction.reply({ content: `🔒 Canal ${chan} bloqueado para interacciones.` });
+            return interaction.reply({ content: `🔒 Canal ${chan} bloqueado.` });
         }
         if (commandName === 'unlock') {
             const chan = options.getChannel('canal') || interaction.channel;
             await chan.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null });
-            return interaction.reply({ content: `🔓 Canal ${chan} desbloqueado exitosamente.` });
+            return interaction.reply({ content: `🔓 Canal ${chan} desbloqueado.` });
         }
         if (commandName === 'purgebots') {
             const cant = options.getInteger('cantidad');
             const msgs = await interaction.channel.messages.fetch({ limit: cant });
             const botMsgs = msgs.filter(m => m.author.bot);
             await interaction.channel.bulkDelete(botMsgs);
-            return interaction.reply({ content: `🤖 Limpieza completada. Mensajes eliminados de bots encontrados.`, ephemeral: true });
+            return interaction.reply({ content: `🤖 Limpieza completada. Mensajes de bots eliminados.`, ephemeral: true });
         }
 
-        // RESPALDOS Y EMERGENCIAS
         if (commandName === 'emergency') {
             const sub = options.getSubcommand();
             config.modoEmergencia = sub === 'on' ? 'Activado' : 'Desactivado'; saveDB();
             if(sub === 'on') {
                 await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: false }).catch(() => null);
             }
-            return interaction.reply({ content: `🚨 Modo Emergencia general cambiado a: \`${config.modoEmergencia}\`.` });
+            return interaction.reply({ content: `🚨 Modo Emergencia cambiado a: \`${config.modoEmergencia}\`.` });
         }
         if (commandName === 'backup') {
             const sub = options.getSubcommand();
             if (sub === 'create') {
                 const canales = interaction.guild.channels.cache.map(c => ({ name: c.name, type: c.type }));
                 db.backups[guildId] = canales; saveDB();
-                return interaction.reply({ content: `💾 Copia de seguridad del servidor generada en la base de datos local.` });
+                return interaction.reply({ content: `💾 Copia de seguridad generada en la base de datos.` });
             } else {
                 const bk = db.backups[guildId];
-                if (!bk) return interaction.reply({ content: '❌ No hay backups guardadas para esta ID.' });
+                if (!bk) return interaction.reply({ content: '❌ No hay backups guardadas.' });
                 return interaction.reply({ content: `🔄 Restaurando canales desde el volcado local...` });
             }
         }
@@ -317,7 +603,6 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // UTILIDADES EXTRAS SOLICITADAS
         if (commandName === 'nick') {
             const apodo = options.getString('apodo');
             await targetMember.setNickname(apodo).catch(() => null);
@@ -349,19 +634,17 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
-    // ==========================================
-    // 2️⃣ MANEJO DE COMPONENTES INTERACTIVOS
-    // ==========================================
+    // INTERACCIONES CON COMPONENTES
     if (interaction.isStringSelectMenu() && customId === 'select-modulo') {
         if (interaction.values[0] === 'toggle_nuke') config.antiNuke = config.antiNuke === 'Activado' ? 'Desactivado' : 'Activado';
         if (interaction.values[0] === 'toggle_spam') config.antiSpam = config.antiSpam === 'Activado' ? 'Desactivado' : 'Activado';
         saveDB();
-        return interaction.reply({ content: '✅ Estados del sistema refrescados en database.', ephemeral: true });
+        return interaction.reply({ content: '✅ Estado del módulo actualizado.', ephemeral: true });
     }
 
     if (interaction.isRoleSelectMenu() && customId === 'select-roles-staff') {
         config.rolesModeradores = interaction.values; saveDB();
-        return interaction.reply({ content: '✅ Cambios completados. Roles autorizados guardados.', ephemeral: true });
+        return interaction.reply({ content: '✅ Roles de Staff autorizados guardados.', ephemeral: true });
     }
 
     if (interaction.isButton() && customId === 'iniciar_verificacion') {
