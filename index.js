@@ -69,7 +69,7 @@ function initUser(userId) {
 const captchasActivos = new Map();
 
 // 🚀 REGISTRO DE COMANDOS CON CONSTRUCCIÓN FORMAL DE OPCIONES Y DESCRIPCIONES COMPLETAS
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log(`🛡️ Nerox Guard cargado con descripciones en cada opción.`);
     
     const commands = [
@@ -384,7 +384,7 @@ client.once('ready', async () => {
             .addUserOption(option => 
                 option
                     .setName('usuario')
-                    .setDescription('El miembro al que se le gestionará el rol.')
+                    .setDescription('El miembro al que se le gestiónará el rol.')
                     .setRequired(true)
             )
             .addRoleOption(option => 
@@ -670,14 +670,18 @@ client.on('interactionCreate', async (interaction) => {
 
 client.login(process.env.DISCORD_TOKEN);
 
-const express = require('express');
+// ==========================================
+// 🌐 SERVIDOR EXPRESS DE MONITORIZACIÓN (UPTIME)
+// ==========================================
+const express = require("express");
 const app = express();
 
-app.get('/', (req, res) => {
-    res.send('Bot online');
+app.get("/", (req, res) => {
+  res.send("Bot online");
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Servidor iniciado en el puerto ${PORT}`);
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Servidor iniciado en el puerto ${PORT}`);
 });
