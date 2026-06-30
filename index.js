@@ -78,9 +78,7 @@ client.once('clientReady', async () => {
         // AYUDA Y UTILERÍA GLOBAL
         new SlashCommandBuilder()
             .setName('help')
-            .setDescription('Muestra el centro de ayuda, comandos y el servidor de soporte oficial del bot.'),
-            .setURL('https://discord.gg/fR2qf5GspN') 
-    
+            .setDescription('Muestra el centro de ayuda, comandos y el servidor de soporte oficial del bot.'),    
         // PUBLICACIÓN GLOBAL MASIVA (OWNER)
         new SlashCommandBuilder()
             .setName('publicacion')
