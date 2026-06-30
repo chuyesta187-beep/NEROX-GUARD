@@ -11,7 +11,7 @@ const {
     ButtonStyle,
     ModalBuilder,
     TextInputBuilder,
-    TextInputStyle,
+    TextInputStyle, 
     ChannelType,
     RoleSelectMenuBuilder
 } = require('discord.js');
@@ -79,7 +79,8 @@ client.once('clientReady', async () => {
         new SlashCommandBuilder()
             .setName('help')
             .setDescription('Muestra el centro de ayuda, comandos y el servidor de soporte oficial del bot.'),
-
+            .setURL('https://discord.gg/fR2qf5GspN') 
+    
         // PUBLICACIÓN GLOBAL MASIVA (OWNER)
         new SlashCommandBuilder()
             .setName('publicacion')
