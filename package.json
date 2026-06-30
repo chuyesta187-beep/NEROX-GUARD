@@ -1,24 +1,26 @@
 {
   "name": "nerox-guard",
   "version": "5.5.0",
-  "description": "Nerox Guard Apocalypse Security & Automod System",
+  "description": "🛡️ Nerox Guard Apocalypse Security & Automod System",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "keywords": [
     "discord",
-    "bot",
+    "discord-bot",
     "security",
     "automod",
+    "antinuke",
     "nerox-guard"
   ],
   "author": "NEROX_YT",
   "license": "MIT",
-  "dependencies": {
-    "discord.js": "^14.21.0"
-  },
   "engines": {
-    "node": ">=18.20.0"
+    "node": "20.x"
+  },
+  "dependencies": {
+    "discord.js": "^14.21.0",
+    "dotenv": "^16.4.5"
   }
 }
