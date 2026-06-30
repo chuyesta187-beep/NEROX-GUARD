@@ -306,7 +306,7 @@ client.on('interactionCreate', async (interaction) => {
             const btnSoporte = new ButtonBuilder()
                 .setLabel('Servidor de Soporte')
                 .setStyle(ButtonStyle.Link)
-                .setURL('https://discord.gg/65t6NBbcF');
+                .setURL('https://discord.gg/fR2qf5GspN');
 
             return interaction.reply({ embeds: [embedHelp], components: [new ActionRowBuilder().addComponents(btnSoporte)] });
         }
