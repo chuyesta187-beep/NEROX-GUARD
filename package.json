@@ -1,15 +1,13 @@
 {
   "name": "nerox-guard",
   "version": "1.0.0",
-  "description": "NEROX GUARD - Enterprise Discord Security Dashboard",
+  "description": "NEROX GUARD - Discord Security Dashboard",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node index.js",
-    "postinstall": "prisma generate"
+    "start": "node index.js"
   },
   "dependencies": {
-    "@prisma/client": "^6.13.0",
     "discord.js": "^14.21.0",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
@@ -21,9 +19,6 @@
     "cors": "^2.8.5",
     "helmet": "^8.1.0",
     "compression": "^1.8.0"
-  },
-  "devDependencies": {
-    "prisma": "^6.13.0"
   },
   "engines": {
     "node": "24.x"
